@@ -249,14 +249,19 @@ cudaMemcpy(a_dev, a_host, n*n*sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpy(localVERTs_host, localVERTs_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTq_host, localVERTq_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTpp_host, localVERTpp_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
-
+  //  cudaMemcpy(a_host, a_dev, n*n*sizeof(double), cudaMemcpyDeviceToHost);
+cudaDeviceSynchronize();
     for (int p = 0; p < n; p++)
     {
-	//localVERTs[p] = localVERTs_host[p];
-	//localVERTq[p] = localVERTq_host[p];
-	//localVERTpp[p] = localVERTpp_host[p];
+	localVERTs[p] = localVERTs_host[p];
+	localVERTq[p] = localVERTq_host[p];
+	localVERTpp[p] = localVERTpp_host[p];
 	std::cout << localVERTs_host[p] << " " << localVERTq_host[p] << " " <<  localVERTpp_host[p] << std::endl;
     }
+/*for(int p = 0; p < n*n; p++)
+{
+std::cout << a_host[p] << " ";
+}*/
 	std::cout  << "*****************************----------------******************"<< std::endl;
 //*-*-                  elements of left diagonal and unscaling
     cudaFree(localVERTs_dev);
