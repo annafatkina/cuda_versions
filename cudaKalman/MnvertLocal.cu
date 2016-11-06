@@ -24,6 +24,9 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#include <malloc.h>
+
+
 
 __device__ void L40Func (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1, int k);
 
@@ -37,9 +40,9 @@ __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVER
 
 __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail);
 
-__device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail);
+__device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int *localFail);
 
-__global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail);
+__global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail);
 
 
 
@@ -69,7 +72,8 @@ __device__ void L50Func (double* a_dev, double* localVERTs_dev, double* localVER
   }
   else 
   {
-    ifail[0] = 1;   //?????? never
+    ifail[0] = 50;   //?????? never
+    
   }
 }
 __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1,int k)
@@ -94,6 +98,7 @@ __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERT
         a_dev[j + k*l] += localVERTpp_dev[j-1]*localVERTq_dev[k-1]; 
       }
     }
+    ElenLeft(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
 }
 
 __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
@@ -130,7 +135,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
     km1 = k - 1;
     if (km1 < 0) 
       {
-        ifail[i-1] = 1;
+        ifail[i-1] = 2;
         return;
       }
       else if (km1 == 0) 
@@ -144,7 +149,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
     }
 }
 
-__device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
+__device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
   int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
@@ -154,7 +159,8 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
     si = a_dev[i + i*l];
     if (si <= 0) 
     {
-      ifail[i-1] = 1;
+      ifail[i-1] = 3;
+      *localFail=1;
       return;
     }
     localVERTs_dev[i-1] = 1 / sqrt(si);
@@ -168,15 +174,30 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
   }
 }
 
-__global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
+__global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
   int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
   int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
+/*if (j <= n)
+  {
+    localVERTs_dev[j-1] = 33;
+  }
+  */
   if (j <= n)
   {
+    localVERTs_dev[j-1] = 0;
+    localVERTq_dev[j-1] = 0;
+    localVERTpp_dev[j-1] = 0;
+    
     ifail[j-1] = 0;
   }
-  ScaleMatrix(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
+ *localFail = 0;
+  ScaleMatrix(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail, localFail);
+  
+  if(*localFail == 1)
+  {
+    return;
+  }
   MainLoop(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
   
   if (j <= n) 
@@ -191,7 +212,7 @@ __global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* 
 
 //__________________________________________________________________________
 extern "C" void MnvertLocal_cpu(Double_t *a, Int_t l, Int_t n, 
-          Int_t &ifail)
+          int* ifail)
 {
   cudaSetDevice(0);
   // taken from TMinuit package of Root (l>=n)
@@ -200,10 +221,10 @@ extern "C" void MnvertLocal_cpu(Double_t *a, Int_t l, Int_t n,
   Double_t * localVERTs = new Double_t[n];
   Double_t * localVERTq = new Double_t[n];
   Double_t * localVERTpp = new Double_t[n];
-
+  std::cout << "default: " << localVERTs[3] << std::endl;
 
 //***************************************************//
-
+//std::cout << "size a = " << _msize(a)/a[0];
   double * localVERTs_dev;
   double * localVERTq_dev;
   double * localVERTpp_dev;
@@ -254,14 +275,25 @@ cudaDeviceSynchronize();
     a_host[p] = (double)(a[p]) ;
   } 
   cudaMemcpy(a_dev, a_host, n*n*sizeof(double), cudaMemcpyHostToDevice);
-  
+  std::cout << "after memcopy to host from host, a:" << std::endl;
+  for (int p = 0; p <n*n; ++p)
+  {
+    std::cout << a_host[p] << " ";
+  } 
+
+   int * localFail;
+   cudaMalloc(&localFail, sizeof(int));
+  //*localFail = 0;
+
+  std::cout << std::endl;
 cudaDeviceSynchronize();
     /* Function Body */
-   //ifail = 0;
+   *ifail = 0;
+   std::cout << "ifail making 0" << std::endl;
     if (n < 1)       goto L100;
     if (n > localMaxint) goto L100;
   std::cout << "Before cuda func " << std::endl;
-    MnvertLocal_gpu<<< dim3(n),dim3(n, n)>>>(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail_dev);
+    MnvertLocal_gpu<<< dim3(16, 16), dim3(n, n)>>>(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, (int)n, (int)l, ifail_dev, localFail);
 cudaDeviceSynchronize();
     cudaMemcpy(localVERTs_host, localVERTs_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTq_host, localVERTq_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
@@ -269,22 +301,24 @@ cudaDeviceSynchronize();
     cudaMemcpy(a_host, a_dev, n*n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(ifail_host, ifail_dev, n*sizeof(int), cudaMemcpyDeviceToHost);
 cudaDeviceSynchronize(); 
-std::cout << "after memcopy" << std::endl;
+std::cout << "after memcopy, ifail:" << std::endl;
 for(int p = 0; p < n; ++p)
 {
   std::cout << ifail_host[p] << " ";
 }
 //ifail = *ifail_host;
+std::cout << "after ifail, a:" << std::endl;
   for (int p = 0; p <n*n; ++p)
   {
     a[p] = (Double_t)(a_host[p]) ;
+    std::cout << a[p] << " ";
   } 
 std::cout << "after changing a" << std::endl;
-  for (int p = 0; p < n; ++p)
+  for (int p = 0; p < n; p++)
   {
-    localVERTs[p] =  localVERTs_host[p];
-    localVERTq[p] =  localVERTq_host[p];
-    localVERTpp[p] = localVERTpp_host[p];
+    localVERTs[p] =  (Double_t)localVERTs_host[p];
+    localVERTq[p] =  (Double_t)localVERTq_host[p];
+    localVERTpp[p] = (Double_t)localVERTpp_host[p];
   }
   std::cout << "after changing 3 arrays" << std::endl;
 /* for (int p = 0; p < n; p++)
@@ -300,23 +334,21 @@ std::cout << a[p] << " ";
   {
     a[p] = (Double_t)(a_host[p]) ;
   }*/ 
-for(int p =0; p < n; ++p)
+
+for(int p = 0; p < n; p++)
 {
   std::cout << ifail_host[p] << " ";
   if (ifail_host[p] != 0)
   {
-    goto L100;
+
+    *ifail = 1;
+    //break;
   }
 }
 std::cout<< "after ifail count" << std::endl;
 for (int p = 0; p < n; p++)
     {
-  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
-    }
-  std::cout  << "*****************************----------------******************"<< std::endl;
-for (int p = 0; p < n; p++)
-    {
-  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
+  std::cout << localVERTs_host[p] << " " << localVERTq_host[p] << " " <<  localVERTpp_host[p] << std::endl;
     }
   std::cout  << "*****************************----------------******************"<< std::endl;
 
@@ -325,6 +357,7 @@ for (int p = 0; p < n; p++)
     cudaFree(localVERTpp_dev);
     cudaFree(a_dev);
     cudaFree(ifail_dev);
+    cudaFree(localFail);
 
 
 
@@ -341,9 +374,10 @@ for (int p = 0; p < n; p++)
 //*-*-                  failure return
 L100:
 
+std::cout << "IF IFAIL:" << std::endl;
 for (int p = 0; p < n; p++)
     {
-  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
+  std::cout << localVERTs_host[p] << " " << localVERTq_host[p] << " " <<  localVERTpp_host[p] << std::endl;
     }
   std::cout  << "*****************************----------------******************"<< std::endl;
 
@@ -362,7 +396,8 @@ std::cout << a[p] << " ";
     cudaFree(localVERTpp_dev);
     cudaFree(a_dev);
     cudaFree(ifail_dev);
-
+    cudaFree(localFail);
+    
 
     free(localVERTs_host);
     free(localVERTq_host);
@@ -372,5 +407,5 @@ std::cout << a[p] << " ";
     delete [] localVERTs;
     delete [] localVERTq;
     delete [] localVERTpp;
-    ifail = 1;
+    *ifail = 1;
 } /* mnvertLocal */
