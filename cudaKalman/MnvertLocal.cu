@@ -69,7 +69,7 @@ __device__ void L50Func (double* a_dev, double* localVERTs_dev, double* localVER
   }
   else 
   {
-    *ifail = 1;
+    ifail[0] = 1;   //?????? never
   }
 }
 __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1,int k)
@@ -121,7 +121,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
       }
     else 
     {
-      *ifail = 1;
+      ifail[i-1] = 1;
       return;
     }
     localVERTpp_dev[k-1] = 1;
@@ -130,7 +130,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
     km1 = k - 1;
     if (km1 < 0) 
       {
-        *ifail = 1;
+        ifail[i-1] = 1;
         return;
       }
       else if (km1 == 0) 
@@ -154,7 +154,7 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
     si = a_dev[i + i*l];
     if (si <= 0) 
     {
-      *ifail = 1;
+      ifail[i-1] = 1;
       return;
     }
     localVERTs_dev[i-1] = 1 / sqrt(si);
@@ -170,11 +170,15 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
 
 __global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
 {
-
-  ScaleMatrix(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
-  MainLoop(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
   int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
   int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
+  if (j <= n)
+  {
+    ifail[j-1] = 0;
+  }
+  ScaleMatrix(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
+  MainLoop(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
+  
   if (j <= n) 
   {
     if (k <= j) 
@@ -205,7 +209,7 @@ extern "C" void MnvertLocal_cpu(Double_t *a, Int_t l, Int_t n,
   double * localVERTpp_dev;
   double * a_dev;
   int * ifail_dev;
-  cudaMalloc(&ifail_dev, sizeof(int));
+  cudaMalloc(&ifail_dev, n*sizeof(int));
   cudaMalloc(&a_dev, n*n*sizeof(double));
   cudaMalloc(&localVERTs_dev, n*sizeof(double));
   cudaMalloc(&localVERTq_dev, n*sizeof(double));
@@ -216,7 +220,7 @@ extern "C" void MnvertLocal_cpu(Double_t *a, Int_t l, Int_t n,
   double * localVERTpp_host;
   double * a_host;
   int * ifail_host;
-  ifail_host = (int*)malloc(sizeof(int));
+  ifail_host = (int*)malloc(n*sizeof(int));
   a_host = (double*)malloc(n*n*sizeof(double));
   localVERTs_host = (double*)malloc(n*sizeof(double));
   localVERTq_host = (double*)malloc(n*sizeof(double));
@@ -249,21 +253,40 @@ cudaDeviceSynchronize();
   {
     a_host[p] = (double)(a[p]) ;
   } 
-    cudaMemcpy(a_dev, a_host, n*n*sizeof(double), cudaMemcpyHostToDevice);
+  cudaMemcpy(a_dev, a_host, n*n*sizeof(double), cudaMemcpyHostToDevice);
+  
 cudaDeviceSynchronize();
     /* Function Body */
    //ifail = 0;
     if (n < 1)       goto L100;
     if (n > localMaxint) goto L100;
+  std::cout << "Before cuda func " << std::endl;
     MnvertLocal_gpu<<< dim3(n),dim3(n, n)>>>(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail_dev);
 cudaDeviceSynchronize();
     cudaMemcpy(localVERTs_host, localVERTs_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTq_host, localVERTq_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTpp_host, localVERTpp_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(a_host, a_dev, n*n*sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(ifail_host, ifail_dev, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(ifail_host, ifail_dev, n*sizeof(int), cudaMemcpyDeviceToHost);
 cudaDeviceSynchronize(); 
-ifail = *ifail_host;
+std::cout << "after memcopy" << std::endl;
+for(int p = 0; p < n; ++p)
+{
+  std::cout << ifail_host[p] << " ";
+}
+//ifail = *ifail_host;
+  for (int p = 0; p <n*n; ++p)
+  {
+    a[p] = (Double_t)(a_host[p]) ;
+  } 
+std::cout << "after changing a" << std::endl;
+  for (int p = 0; p < n; ++p)
+  {
+    localVERTs[p] =  localVERTs_host[p];
+    localVERTq[p] =  localVERTq_host[p];
+    localVERTpp[p] = localVERTpp_host[p];
+  }
+  std::cout << "after changing 3 arrays" << std::endl;
 /* for (int p = 0; p < n; p++)
     {
   std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
@@ -273,20 +296,44 @@ for(int p = 0; p < n*n; p++)
 {
 std::cout << a[p] << " ";
 }*/
-  for (int p = 0; p <n*n; ++p)
+ /* for (int p = 0; p <n*n; ++p)
   {
     a[p] = (Double_t)(a_host[p]) ;
-  } 
+  }*/ 
+for(int p =0; p < n; ++p)
+{
+  std::cout << ifail_host[p] << " ";
+  if (ifail_host[p] != 0)
+  {
+    goto L100;
+  }
+}
+std::cout<< "after ifail count" << std::endl;
+for (int p = 0; p < n; p++)
+    {
+  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
+    }
+  std::cout  << "*****************************----------------******************"<< std::endl;
+for (int p = 0; p < n; p++)
+    {
+  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
+    }
+  std::cout  << "*****************************----------------******************"<< std::endl;
+
     cudaFree(localVERTs_dev);
     cudaFree(localVERTq_dev);
     cudaFree(localVERTpp_dev);
     cudaFree(a_dev);
+    cudaFree(ifail_dev);
+
 
 
     free(localVERTs_host);
     free(localVERTq_host);
     free(localVERTpp_host);
     free(a_host);
+    free(ifail_host);
+    
     delete [] localVERTs;
     delete [] localVERTq;
     delete [] localVERTpp;
@@ -294,6 +341,11 @@ std::cout << a[p] << " ";
 //*-*-                  failure return
 L100:
 
+for (int p = 0; p < n; p++)
+    {
+  std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
+    }
+  std::cout  << "*****************************----------------******************"<< std::endl;
 
  /*for (int p = 0; p < n; p++)
     {
@@ -309,12 +361,14 @@ std::cout << a[p] << " ";
     cudaFree(localVERTq_dev);
     cudaFree(localVERTpp_dev);
     cudaFree(a_dev);
+    cudaFree(ifail_dev);
 
 
     free(localVERTs_host);
     free(localVERTq_host);
     free(localVERTpp_host);
     free(a_host);
+    free(ifail_host);
     delete [] localVERTs;
     delete [] localVERTq;
     delete [] localVERTpp;
