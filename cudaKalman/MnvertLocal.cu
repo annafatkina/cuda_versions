@@ -38,7 +38,7 @@ __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERT
 
 __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail);
 
-__device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail);
+__device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail);
 
 __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int *localFail);
 
@@ -73,7 +73,7 @@ __device__ void L50Func (double* a_dev, double* localVERTs_dev, double* localVER
   else 
   {
     ifail[0] = 50;   //?????? never
-    
+
   }
 }
 __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1,int k)
@@ -98,7 +98,7 @@ __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERT
         a_dev[j + k*l] += localVERTpp_dev[j-1]*localVERTq_dev[k-1]; 
       }
     }
-    ElenLeft(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
+  //  ElenLeft(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
 }
 
 __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
@@ -113,21 +113,23 @@ __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVER
     }
 }
 
-__device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
+__device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
   int kp1, km1, k;
   if (i <= n) {
     k = i;
   //*-*-                  preparation for elimination step1
-    if (a_dev[k + k*l] != 0) 
+    if (a_dev[k + k*l] == 0.0) 
       {
-        localVERTq_dev[k-1] = 1 / a_dev[k + k*l];
+        *localFail = 1;
+        ifail[i-1] = 1;
+        return;
+        
       }
     else 
     {
-      ifail[i-1] = 1;
-      return;
+      localVERTq_dev[k-1] = 1 / a_dev[k + k*l]; 
     }
     localVERTpp_dev[k-1] = 1;
     a_dev[k + k*l] = 0;
@@ -136,6 +138,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
     if (km1 < 0) 
       {
         ifail[i-1] = 2;
+        *localFail = 1;
         return;
       }
       else if (km1 == 0) 
@@ -198,16 +201,22 @@ __global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* 
   {
     return;
   }
-  MainLoop(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
-  
-  if (j <= n) 
+  *localFail = 0;
+  MainLoop(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail, localFail);
+  if(*localFail == 1)
+  {
+    return;
+  }
+  /*if (j <= n) 
   {
     if (k <= j) 
     {
       a_dev[k + j*l] = a_dev[k + j*l]*localVERTs_dev[k-1]*localVERTs_dev[j-1];
       a_dev[j + k*l] = a_dev[k + j*l];
     }
-  }
+  }*/
+  ElenLeft(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
+
 }
 
 //__________________________________________________________________________
@@ -217,12 +226,12 @@ extern "C" void MnvertLocal_cpu(Double_t *a, Int_t l, Int_t n,
   cudaSetDevice(0);
   // taken from TMinuit package of Root (l>=n)
   // fVERTs, fVERTq and fVERTpp changed to localVERTs, localVERTq and localVERTpp
-  //  Double_t localVERTs[n], localVERTq[n], localVERTpp[n];
-  Double_t * localVERTs = new Double_t[n];
-  Double_t * localVERTq = new Double_t[n];
-  Double_t * localVERTpp = new Double_t[n];
+  //  double_t localVERTs[n], localVERTq[n], localVERTpp[n];
+/*  double_t * localVERTs = new double_t[n];
+  double_t * localVERTq = new double_t[n];
+  double_t * localVERTpp = new double_t[n];
   std::cout << "default: " << localVERTs[3] << std::endl;
-
+*/
 //***************************************************//
 //std::cout << "size a = " << _msize(a)/a[0];
   double * localVERTs_dev;
@@ -264,7 +273,7 @@ cudaDeviceSynchronize();
     Int_t aOffset;
 
     /* Local variables */
-    //Double_t si;
+    //double_t si;
     //Int_t kp1, km1;
 
     aOffset = l + 1;
@@ -314,13 +323,13 @@ std::cout << "after ifail, a:" << std::endl;
     std::cout << a[p] << " ";
   } 
 std::cout << "after changing a" << std::endl;
-  for (int p = 0; p < n; p++)
+/*  for (int p = 0; p < n; p++)
   {
-    localVERTs[p] =  (Double_t)localVERTs_host[p];
-    localVERTq[p] =  (Double_t)localVERTq_host[p];
-    localVERTpp[p] = (Double_t)localVERTpp_host[p];
+    localVERTs[p] =  (double_t)localVERTs_host[p];
+    localVERTq[p] =  (double_t)localVERTq_host[p];
+    localVERTpp[p] = (double_t)localVERTpp_host[p];
   }
-  std::cout << "after changing 3 arrays" << std::endl;
+  */std::cout << "after changing 3 arrays" << std::endl;
 /* for (int p = 0; p < n; p++)
     {
   std::cout << localVERTs[p] << " " << localVERTq[p] << " " <<  localVERTpp[p] << std::endl;
@@ -332,7 +341,7 @@ std::cout << a[p] << " ";
 }*/
  /* for (int p = 0; p <n*n; ++p)
   {
-    a[p] = (Double_t)(a_host[p]) ;
+    a[p] = (double_t)(a_host[p]) ;
   }*/ 
 
 for(int p = 0; p < n; p++)
@@ -367,10 +376,10 @@ for (int p = 0; p < n; p++)
     free(a_host);
     free(ifail_host);
     
-    delete [] localVERTs;
+   /* delete [] localVERTs;
     delete [] localVERTq;
     delete [] localVERTpp;
-    return;
+    */return;
 //*-*-                  failure return
 L100:
 
@@ -404,8 +413,9 @@ std::cout << a[p] << " ";
     free(localVERTpp_host);
     free(a_host);
     free(ifail_host);
-    delete [] localVERTs;
+  /*  delete [] localVERTs;
     delete [] localVERTq;
     delete [] localVERTpp;
+    */
     *ifail = 1;
 } /* mnvertLocal */
