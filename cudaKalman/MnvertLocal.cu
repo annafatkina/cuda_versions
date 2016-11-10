@@ -57,9 +57,8 @@ __device__ void L40Func (double* a_dev, double* localVERTs_dev, double* localVER
   if (j <= km1) 
   {
     localVERTpp_dev[j-1] = a_dev[j + k*l];
-    if(isnan(a_dev[j + k*l]))
-      {exit;}
-    localVERTq_dev[j-1]  = __fmul_rn(a_dev[j + k*l], localVERTq_dev[k-1]);
+
+    localVERTq_dev[j-1]  = __dmul_rn(a_dev[j + k*l], localVERTq_dev[k-1]);
     a_dev[j + k*l]   = 0.0;
   }
   L50Func(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail, kp1, km1, k);
@@ -90,9 +89,8 @@ __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERT
   if (j >= kp1 && j <= n) 
   {
     localVERTpp_dev[j-1] = a_dev[k + j*l];
-    if(isnan(a_dev[k + j*l] ))
-      {exit;}
-    localVERTq_dev[j-1]  = __fmul_rn(-a_dev[k + j*l],localVERTq_dev[k-1]);
+    
+    localVERTq_dev[j-1]  = __dmul_rn(-a_dev[k + j*l],localVERTq_dev[k-1]);
     a_dev[k + j*l]   = 0.0;
 
   }
@@ -108,9 +106,8 @@ __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERT
     {
       if (k >= j && k <= n) 
       { 
-        a_dev[j + k*l] = __fadd_rn(a_dev[j + k*l], __fmul_rn(localVERTpp_dev[j-1],localVERTq_dev[k-1]));
-        if(isnan (a_dev[j + k*l] ))
-        {exit;} 
+        a_dev[j + k*l] = __dadd_rn(a_dev[j + k*l], __dmul_rn(localVERTpp_dev[j-1],localVERTq_dev[k-1]));
+        
       }
     }
   //  ElenLeft(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l, ifail);
@@ -124,10 +121,9 @@ __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVER
   int k = threadIdx.y + 1;
       if(j <= n) {
         if (k <= j) {
-            a_dev[k + j*l] = __fmul_rn(__fmul_rn(a_dev[k + j*l],localVERTs_dev[k-1]),localVERTs_dev[j-1]);
+            a_dev[k + j*l] = __dmul_rn(__dmul_rn(a_dev[k + j*l],localVERTs_dev[k-1]),localVERTs_dev[j-1]);
             a_dev[j + k*l] = a_dev[k + j*l];
-            if(isnan (a_dev[k + j*l] ))
-              {exit;}
+            
         }
     }
 }
@@ -141,7 +137,7 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
   if (i <= n) {
     k = i;
   //*-*-                  preparation for elimination step1
-    if (a_dev[k + k*l] == 0.0) 
+    if (fabs(a_dev[k + k*l]) < NPP_MINABS_64F) 
       {
         *localFail = 1;
         ifail[i-1] = 1;
@@ -150,11 +146,8 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
       }
     else 
     {
-      localVERTq_dev[k-1] = __fdiv_rn((double)1.0, a_dev[k + k*l]);
-      if(isnan (localVERTq_dev[k-1]))
-      {
-        exit;
-      } 
+      localVERTq_dev[k-1] = __drcp_rn(a_dev[k + k*l]);
+
     }
     localVERTpp_dev[k-1] = 1.0;
     a_dev[k + k*l] = 0.0;
@@ -187,11 +180,8 @@ __device__ void AfterScaleMatrix(double* a_dev, double* localVERTs_dev, double* 
   {
     if (j <= n)
     {
-      a_dev[i + j*l] = __fmul_rn(__fmul_rn(a_dev[i + j*l], localVERTs_dev[i-1]), localVERTs_dev[j-1]);
-      if (isnan (a_dev[i + j*l]))  
-      {
-        exit;
-      }
+      a_dev[i + j*l] = __dmul_rn(__dmul_rn(a_dev[i + j*l], localVERTs_dev[i-1]), localVERTs_dev[j-1]);
+
     }
   }
 }
@@ -212,7 +202,7 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
       *localFail=1;
       return;
     }
-    localVERTs_dev[i-1] =__fdiv_rn((double)1.0,__fsqrt_rn(si));  }
+    localVERTs_dev[i-1] =__drcp_rn(__dsqrt_rn(si));  }
   AfterScaleMatrix( a_dev,  localVERTs_dev, localVERTq_dev, localVERTpp_dev, n, l,ifail, localFail);
   
 }
