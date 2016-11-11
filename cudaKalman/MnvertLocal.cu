@@ -26,7 +26,7 @@
 #include <device_launch_parameters.h>
 #include <malloc.h>
 
-#define NPP_MINABS_64F ( 2.2250738585072014e-308 )
+#define NPP_MINABS_64F ( 1e-322 )
 
 
 __device__ void L40Func (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1, int k);
@@ -52,8 +52,8 @@ __global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* 
 // ****************
 __device__ void L40Func (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1, int k)
 {
-  //int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
- int j =  threadIdx.x + 1;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
+ //int j =  threadIdx.x + 1;
   if (j <= km1) 
   {
     localVERTpp_dev[j-1] = a_dev[j + k*l];
@@ -83,8 +83,8 @@ __device__ void L50Func (double* a_dev, double* localVERTs_dev, double* localVER
 }
 __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int kp1, int km1,int k)
 {
- // int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  int j =  threadIdx.x + 1;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
+ // int j =  threadIdx.x + 1;
  
   if (j >= kp1 && j <= n) 
   {
@@ -98,10 +98,10 @@ __device__ void L51Func(double* a_dev, double* localVERTs_dev, double* localVERT
 }
 __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
 {
- // int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
- // int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
-  int j = threadIdx.x + 1;
-  int k = threadIdx.y + 1;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
+ // int j = threadIdx.x + 1;
+ // int k = threadIdx.y + 1;
     if (j <= n) 
     {
       if (k >= j && k <= n) 
@@ -115,10 +115,10 @@ __device__ void L60Func(double* a_dev, double* localVERTs_dev, double* localVERT
 
 __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail)
 {
-  //int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  //int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
-  int j = threadIdx.x + 1;
-  int k = threadIdx.y + 1;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
+  //int j = threadIdx.x + 1;
+  //int k = threadIdx.y + 1;
       if(j <= n) {
         if (k <= j) {
             a_dev[k + j*l] = __dmul_rn(__dmul_rn(a_dev[k + j*l],localVERTs_dev[k-1]),localVERTs_dev[j-1]);
@@ -130,8 +130,8 @@ __device__ void ElenLeft(double* a_dev, double* localVERTs_dev, double* localVER
 
 __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
-//  int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  int i = threadIdx.x + 1;
+  int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+//  int i = threadIdx.x + 1;
   
   int kp1, km1, k;
   if (i <= n) {
@@ -172,10 +172,10 @@ __device__ void MainLoop(double* a_dev, double* localVERTs_dev, double* localVER
 
 __device__ void AfterScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
-  //int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  //int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
-  int i = threadIdx.x + 1;
-  int j = threadIdx.y + 1;
+  int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+  //int i = threadIdx.x + 1;
+  //int j = threadIdx.y + 1;
   if (i <= n) 
   {
     if (j <= n)
@@ -187,10 +187,10 @@ __device__ void AfterScaleMatrix(double* a_dev, double* localVERTs_dev, double* 
 }
 __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
-  //int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  //int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
-  int i = threadIdx.x + 1;
-  int j = threadIdx.y + 1;
+  int i = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  int j = blockIdx.y * blockDim.y + threadIdx.y + 1;
+  //int i = threadIdx.x + 1;
+  //int j = threadIdx.y + 1;
   
   double si;
   if (i <= n)
@@ -209,10 +209,10 @@ __device__ void ScaleMatrix(double* a_dev, double* localVERTs_dev, double* local
 
 __global__ void MnvertLocal_gpu (double* a_dev, double* localVERTs_dev, double* localVERTq_dev, double* localVERTpp_dev, int n, int l, int *ifail, int* localFail)
 {
- // int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
- // int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
-int j =threadIdx.x + 1;
-  int k = threadIdx.y + 1;
+  int j = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  int k = blockIdx.y * blockDim.y + threadIdx.y + 1;
+//int j =threadIdx.x + 1;
+ // int k = threadIdx.y + 1;
 /*if (j <= n)
   {
     localVERTs_dev[j-1] = 33;
@@ -335,7 +335,7 @@ cudaDeviceSynchronize();
     if (n < 1)       goto L100;
     if (n > localMaxint) goto L100;
   std::cout << "Before cuda func " << std::endl;
-    MnvertLocal_gpu<<< n+1, dim3(n, n)>>>(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, (int)n, (int)l, ifail_dev, localFail);
+    MnvertLocal_gpu<<< n, n>>>(a_dev, localVERTs_dev, localVERTq_dev, localVERTpp_dev, (int)n, (int)l, ifail_dev, localFail);
 cudaDeviceSynchronize();
     cudaMemcpy(localVERTs_host, localVERTs_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(localVERTq_host, localVERTq_dev, n*sizeof(double), cudaMemcpyDeviceToHost);
